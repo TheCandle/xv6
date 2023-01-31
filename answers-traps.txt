@@ -1,0 +1,6 @@
+1. in a register; 13 in a2;
+2. at address 0x26; g in address 0x24; 
+3. 0x630
+4. 0x38
+5. HE110 World;   if big-endian : 0x726c6400
+6. the content of registre a2

@@ -70,6 +70,13 @@ usertrap(void)
     //syscall sigalarm
     if(which_dev==2&&!(p->interval==0&&p->handler==0)  ){
       p->ticks += 1;
+
+      if(p->ticks==p->interval&& !(p->interval==0&&p->handler==0) ){
+          p->alarmframe =  p->trapframe + 512;
+         *(p->alarmframe) = *(p->trapframe);
+          p->trapframe->epc = (uint64)p->handler;
+       //   p->ticks=0;
+      }
     }
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
@@ -80,10 +87,12 @@ usertrap(void)
   if(p->killed)
     exit(-1);
   
-  if(p->ticks>=p->interval&& !(p->interval==0&&p->handler==0) ){
-      p->trapframe->epc = (uint64)p->handler;
-      p->ticks=0;
-   }
+  //if(p->ticks==p->interval&& !(p->interval==0&&p->handler==0) ){
+    //  p->alarmframe =  p->trapframe + 512;
+    //  *(p->alarmframe) = *(p->trapframe);
+   //   p->trapframe->epc = (uint64)p->handler;
+  //    p->ticks=0;
+  // }
 
   // give up the CPU if this is a timer interrupt.
   if(which_dev == 2)
