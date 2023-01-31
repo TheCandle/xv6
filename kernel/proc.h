@@ -101,8 +101,13 @@ struct proc {
   uint64 sz;                   // Size of process memory (bytes)
   pagetable_t pagetable;       // User page table
   struct trapframe *trapframe; // data page for trampoline.S
+  struct trapframe *trapframe2; // syscall sigalarm
   struct context context;      // swtch() here to run process
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+  int interval;			//syscall sigalarm
+  void (*handler)();	       //syscall sigalarm 
+  int ticks;		       //syscall sigalarm
+
 };
