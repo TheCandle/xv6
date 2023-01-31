@@ -16,6 +16,9 @@ void kernelvec();
 
 extern int devintr();
 
+int cowhandler(pagetable_t,uint64);
+pte_t* walk(pagetable_t,uint64,int);
+
 void
 trapinit(void)
 {
@@ -67,7 +70,16 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
-  } else {
+  } else if(r_scause() == 15){
+	if(cowhandler(p->pagetable,r_stval()) <0 )
+	  p->killed = 1;
+       //uint64 npg = kalloc();
+       //pte_t* pte = walk(p->pagetable, r_stval(), 0);
+       //*pte &= PTE_FLAGS(*pte);         //只要低位
+       //*pte |= PA2PTE(npg);		//
+       //*pte |= PTE_W;                   //可写
+      // *pte &= ~(PTE_COW);              //取消PTE_COW标志 
+  }else {	
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     p->killed = 1;
@@ -218,3 +230,22 @@ devintr()
   }
 }
 
+int cowhandler(pagetable_t pagetable,uint64 va){
+  if(va>=MAXVA)
+    return -1;
+  pte_t *pte;
+  pte = walk(pagetable,va,0);
+  if(pte==0)return -1;
+  if ((*pte & PTE_U) == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_COW) == 0)
+	      return -1;
+  uint64 pa = PTE2PA(*pte);
+  uint64 ka = (uint64)kalloc();
+  if(ka==0)
+	  return -1;
+  memmove((char*)pa,(char*)pa,PGSIZE);
+  kfree((void*)pa);
+    uint flags = PTE_FLAGS(*pte);
+      *pte = PA2PTE(ka) | flags | PTE_W;
+        *pte &= ~PTE_COW;
+	return 0;
+}
