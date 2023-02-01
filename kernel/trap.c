@@ -242,7 +242,7 @@ int cowhandler(pagetable_t pagetable,uint64 va){
   uint64 ka = (uint64)kalloc();
   if(ka==0)
 	  return -1;
-  memmove((char*)pa,(char*)pa,PGSIZE);
+  memmove((char*)ka,(char*)pa,PGSIZE);
   kfree((void*)pa);
     uint flags = PTE_FLAGS(*pte);
       *pte = PA2PTE(ka) | flags | PTE_W;
