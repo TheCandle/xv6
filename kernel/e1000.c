@@ -92,6 +92,44 @@ e1000_init(uint32 *xregs)
   regs[E1000_IMS] = (1 << 7); // RXDW -- Receiver Descriptor Write Back
 }
 
+// int
+// e1000_transmit(struct mbuf *m)
+// {
+//   //
+//   // Your code here.
+//   //
+//   // the mbuf contains an ethernet frame; program it into
+//   // the TX descriptor ring so that the e1000 sends it. Stash
+//   // a pointer so that it can be freed after sending.
+//   //
+//   // printf("transmitting....");
+//   /* m 是 in-memory 的 */
+//   acquire(&e1000_lock);
+
+//   uint32 idx = regs[E1000_TDT];
+
+//   /* tx_ring 还未完成之前写的工作 */
+//   if((tx_ring[idx].status & E1000_TXD_STAT_DD) == 0) {
+//     release(&e1000_lock);
+//     return -1;
+//   }
+
+//   /* 将之前挂载在 tx_mbufs 中的 mbuf 释放掉，即归还给 memory */
+//   if(tx_mbufs[idx])
+//     mbuffree(tx_mbufs[idx]);
+
+//   /* 将 in-memory 的 m 挂载到 tx_ring，此 m 包含了我们需要传输的数据  */
+//   tx_mbufs[idx] = m;
+//   tx_ring[idx].length = m->len;   /* 为 m 填写一些 metadata*/
+//   tx_ring[idx].addr = (uint64)m->head;
+//   tx_ring[idx].cmd = E1000_TXD_CMD_RS | E1000_TXD_CMD_EOP;
+
+//   /* 环形队列指向下一个空位，为下一次的传输操作作准备 */
+//   regs[E1000_TDT] = (idx+1)%TX_RING_SIZE;   
+//   release(&e1000_lock);
+//   return 0;
+// }
+
 int
 e1000_transmit(struct mbuf *m)
 {
@@ -102,33 +140,66 @@ e1000_transmit(struct mbuf *m)
   // the TX descriptor ring so that the e1000 sends it. Stash
   // a pointer so that it can be freed after sending.
   //
-  // printf("transmitting....");
-  /* m 是 in-memory 的 */
-  acquire(&e1000_lock);
-
-  uint32 idx = regs[E1000_TDT];
-
-  /* tx_ring 还未完成之前写的工作 */
-  if((tx_ring[idx].status & E1000_TXD_STAT_DD) == 0) {
+  // printf("hello_t\n");
+  acquire(&e1000_lock); 
+  uint32 tx_index = regs[E1000_TDT];
+  if((tx_ring[tx_index].status & E1000_TXD_STAT_DD) == 0 ) {
     release(&e1000_lock);
     return -1;
   }
+  // 保证释放mbuf  
+  if(tx_mbufs[tx_index])
+    mbuffree(tx_mbufs[tx_index]);
+  // 填上tdesc
+  tx_mbufs[tx_index] = m; 
+  tx_ring[tx_index].addr = (uint64)m->head; 
+  tx_ring[tx_index].length = m->len;
+  // 如果是最后一个packet,设置eop  
+  // if(!m->next) {
+    // tx_ring[tx_index].cmd |= E1000_TXD_CMD_EOP;
+  // } 
+  tx_ring[tx_index].cmd = E1000_TXD_CMD_RS | E1000_TXD_CMD_EOP;
 
-  /* 将之前挂载在 tx_mbufs 中的 mbuf 释放掉，即归还给 memory */
-  if(tx_mbufs[idx])
-    mbuffree(tx_mbufs[idx]);
-
-  /* 将 in-memory 的 m 挂载到 tx_ring，此 m 包含了我们需要传输的数据  */
-  tx_mbufs[idx] = m;
-  tx_ring[idx].length = m->len;   /* 为 m 填写一些 metadata*/
-  tx_ring[idx].addr = (uint64)m->head;
-  tx_ring[idx].cmd = E1000_TXD_CMD_RS | E1000_TXD_CMD_EOP;
-
-  /* 环形队列指向下一个空位，为下一次的传输操作作准备 */
-  regs[E1000_TDT] = (idx+1)%TX_RING_SIZE;   
+  regs[E1000_TDT] = (tx_index + 1) % TX_RING_SIZE;
+  
   release(&e1000_lock);
+  // printf("transmitting....");
   return 0;
 }
+
+// static void
+// e1000_recv(void)
+// {
+//   //
+//   // Your code here.
+//   //
+//   // Check for packets that have arrived from the e1000
+//   // Create and deliver an mbuf for each packet (using net_rx()).
+//   //
+//   /*  */
+//   while(1) {
+//     /* 为刚接收的 packet 腾出空间 */
+//     uint32 idx = (regs[E1000_RDT]+1)%RX_RING_SIZE;  
+
+//     /* 当前没有需要读取的 packet */
+//     if((rx_ring[idx].status & E1000_RXD_STAT_DD) == 0)
+//       return;
+
+//     /* 将暂存在 rx_mbufs 中的 packet 向上传递至 application */
+//     rx_mbufs[idx]->len = rx_ring[idx].length;
+//     net_rx(rx_mbufs[idx]);
+
+//     /* 刷新 rx_ring ，为接收下一批 packets 作准备 */
+//     if((rx_mbufs[idx]=mbufalloc(0)) == 0)
+//       panic("e1000 _recv");
+
+//     rx_ring[idx].addr = (uint64)rx_mbufs[idx]->head;      
+//     rx_ring[idx].status = 0;
+
+//     regs[E1000_RDT] = idx;
+//   }
+//   // printf("recving...");
+// }
 
 static void
 e1000_recv(void)
@@ -139,29 +210,32 @@ e1000_recv(void)
   // Check for packets that have arrived from the e1000
   // Create and deliver an mbuf for each packet (using net_rx()).
   //
-  /*  */
+  // printf("hello_r\n");
   while(1) {
-    /* 为刚接收的 packet 腾出空间 */
-    uint32 idx = (regs[E1000_RDT]+1)%RX_RING_SIZE;  
+      // uint32_t recv_index = regs[E1000_RDT];
+      uint32 recv_index = (regs[E1000_RDT] + 1) % RX_RING_SIZE;
+      if((rx_ring[recv_index].status & E1000_RXD_STAT_DD) == 0 ) {
+        return ;
+      }
+ 
+      // ((struct mbuf*)(rx_ring[recv_index].addr))->len = rx_ring[recv_index].length;
+      rx_mbufs[recv_index]->len = rx_ring[recv_index].length; 
+      // net_rx((struct mbuf*)rx_ring[recv_index].addr);  
+      net_rx(rx_mbufs[recv_index]);  
 
-    /* 当前没有需要读取的 packet */
-    if((rx_ring[idx].status & E1000_RXD_STAT_DD) == 0)
+      struct mbuf* new_rx_mbuf = mbufalloc(0);
+      if(!new_rx_mbuf) {
+        panic("e1000");
+      }
+      rx_mbufs[recv_index] = new_rx_mbuf; 
+      rx_ring[recv_index].addr = (uint64)new_rx_mbuf->head;
+      rx_ring[recv_index].status = 0;
+      
+      regs[E1000_RDT] = recv_index;
+      
+   } 
+   // printf("recving...");
       return;
-
-    /* 将暂存在 rx_mbufs 中的 packet 向上传递至 application */
-    rx_mbufs[idx]->len = rx_ring[idx].length;
-    net_rx(rx_mbufs[idx]);
-
-    /* 刷新 rx_ring ，为接收下一批 packets 作准备 */
-    if((rx_mbufs[idx]=mbufalloc(0)) == 0)
-      panic("e1000 _recv");
-
-    rx_ring[idx].addr = (uint64)rx_mbufs[idx]->head;      
-    rx_ring[idx].status = 0;
-
-    regs[E1000_RDT] = idx;
-  }
-  // printf("recving...");
 }
 
 void
