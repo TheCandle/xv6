@@ -118,11 +118,11 @@ e1000_transmit(struct mbuf *m)
   tx_ring[tx_index].length = m->len;
   // 如果是最后一个packet,设置eop  
   // if(!m->next) {
-    tx_ring[tx_index].cmd |= E1000_TXD_CMD_EOP;
+    // tx_ring[tx_index].cmd |= E1000_TXD_CMD_EOP;
   // } 
-  tx_ring[tx_index].cmd |= E1000_TXD_CMD_RS;
+  tx_ring[tx_index].cmd = E1000_TXD_CMD_RS | E1000_TXD_CMD_EOP;
 
-  regs[E1000_TDT] = (regs[E1000_TDT] + 1) % TX_RING_SIZE;
+  regs[E1000_TDT] = (tx_index + 1) % TX_RING_SIZE;
   
   release(&e1000_lock);
   // printf("transmitting....");
@@ -162,7 +162,7 @@ e1000_recv(void)
       regs[E1000_RDT] = recv_index;
       
    } 
-   printf("recving...");
+   // printf("recving...");
       return;
 }
 
