@@ -403,7 +403,7 @@ bmap(struct inode *ip, uint bn)
   bn -= NINDIRECT;
   if(bn < NININDIRECT) {
     if((addr = ip->addrs[NDIRECT + 1]) == 0) 
-      ip->addrs[bn] = addr = balloc(ip->dev);
+      ip->addrs[NDIRECT + 1] = addr = balloc(ip->dev);
     bp = bread(ip->dev, addr);
     a = (uint*)bp->data;
     if((addr = a[bn / NINDIRECT]) == 0) {

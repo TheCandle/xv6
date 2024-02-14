@@ -23,5 +23,6 @@
 #endif
 #endif
 #define MAXPATH      128   // maximum file path name
-
+ 
+#define MAX_FOLLOW   10    // 代表symlink最多递归寻找的次数
 
