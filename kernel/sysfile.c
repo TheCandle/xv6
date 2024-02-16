@@ -16,6 +16,9 @@
 #include "file.h"
 #include "fcntl.h"
 
+// get TRAMFRAME
+#include "memlayout.h"
+
 // Fetch the nth word-sized system call argument as a file descriptor
 // and return both the descriptor and the corresponding struct file.
 static int
@@ -485,13 +488,154 @@ sys_pipe(void)
   return 0;
 }
 
+void vmas_sort() {
+  struct proc *p = myproc();
 
+  // 根据addr 降序排序
+  for(int i = 0 ; i < VMA_NUM - 1 ; i++) {
+    for(int j = 0 ; j < VMA_NUM - i - 1 ; j++) {
+      if(p->vmas[j].addr < p->vmas[j + 1].addr) {
+        // swap
+        struct vma temp = p->vmas[j + 1];
+        p->vmas[j + 1] = p->vmas[j];
+        p->vmas[j] = temp;
+      }
+    }
+  }
+}
 
+uint64 get_freespace(uint64 len) {
+  struct proc *p = myproc();
+
+  vmas_sort();
+  // 上开下闭
+  uint64 top = TRAPFRAME, bottom = top - len;
+  for(int i = 0 ; i < VMA_NUM ; i++) {
+    struct vma vmap = p->vmas[i];
+    if(vmap.valid == 0) continue;
+    // if(top <= (vmap.addr+vmap.length) || bottom <= vmap.addr){
+    //   top = vmap.addr;
+    //   bottom = top - len;
+    // }
+    if( ! (top <= vmap.addr || bottom >= vmap.addr + len) ) {
+      top = vmap.addr;
+      bottom = top - len;
+    }
+  }
+
+  return bottom;
+}
+
+// uint64
+// find_freespace(struct vma m[],uint64 len){
+//   uint64 top = TRAPFRAME,bottom = TRAPFRAME-len;
+//   int i;
+//   for(i = 0 ; i < VMA_NUM ; i++){  
+//     if(m[i].valid == 0)
+//       continue;
+//     if(top <= (m[i].addr+m[i].length) || bottom <= m[i].addr){
+//       top = m[i].addr;
+//       bottom = top - len;
+//     }
+//   }
+
+//   return bottom;
+// }
 
 uint64
 sys_mmap(void){
-  return -1;
+  
+  uint64 addr, length;
+  int prot, flags, fd, off;
+  struct file* f;
+
+  if(argaddr(0, &addr) < 0 || argaddr(1, &length) < 0 || 
+    argint(2,&prot) < 0 || argint(3, &flags) < 0 ||
+    argfd(4, &fd, &f) < 0 || argint(5, &off) < 0
+  )
+    return -1;
+  
+  struct proc *p = myproc();
+  // 寻找P中空闲的vma
+  struct vma *empty = 0;
+  for(int i = 0 ; i < VMA_NUM ; i++) {
+    
+    if(p->vmas[i].valid == 0) {
+      empty = &p->vmas[i];
+      break;
+    }
+  }
+  if(!empty) {
+    panic("mmap failed get vma");
+  }
+  uint64 va = get_freespace(length);
+  
+  empty->addr = va;
+  empty->tfile = f;
+  empty->length = length;
+  empty->valid = 1;
+  empty->prot = prot << 1 | PTE_U;
+  empty->off = off;
+
+  filedup(f);
+  
+  return va;
 }
+
+// uint64
+// sys_mmap(void){
+//   uint64 addr,len;
+//   int prot,flags,fd,off;
+//   struct file *f;
+
+
+//   if(argfd(4,&fd,&f) < 0)
+//     return -1;    
+
+//   argaddr(0,&addr);argaddr(1,&len);argint(2,&prot);
+//   argint(3,&flags);argint(5,&off);
+
+//   //open是以只读形式打开文件的时候，
+//   //mmap以MAP_SHARED和PROT_WRITE方式进行映射是会出现错误的，在
+//   if(f->writable == O_RDONLY && 
+//     (prot & PROT_WRITE) && (flags & MAP_SHARED))
+//     return -1;
+
+//   struct proc *p = myproc();
+//   uint64 va;
+
+//   if(addr == 0){
+//     struct vma *empty = 0;
+//     int i;
+//     for(i = 0 ; i < VMA_NUM ; i++){
+//       if(p->vmas[i].valid == 0){
+//         empty = &p->vmas[i];
+//         break;
+//       }
+//     }
+
+//     if(empty == 0)
+//       panic("mmap");
+
+//     if((va = find_freespace(p->vmas,len))==0)
+//       panic("mmap 2");
+
+//     //初始化VMA
+//     empty->valid = 1;
+//     empty->tfile = f;
+//     empty->flags = flags;
+//     empty->length = len;
+//     empty->off = off;
+//     empty->prot = prot << 1 | PTE_U;
+//     empty->addr = va;
+
+//     filedup(f);
+
+//     return empty->addr;
+//   }
+
+//   return -1;
+// }
 
 uint64
 sys_munmap(void) {
