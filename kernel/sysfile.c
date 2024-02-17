@@ -574,8 +574,10 @@ sys_mmap(void){
   empty->tfile = f;
   empty->length = length;
   empty->valid = 1;
+  // 页表的标志位
   empty->prot = prot << 1 | PTE_U;
   empty->off = off;
+  empty->flags = flags;
 
   filedup(f);
   

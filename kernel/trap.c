@@ -6,6 +6,10 @@
 #include "proc.h"
 #include "defs.h"
 
+#include "fs.h"
+#include "sleeplock.h"
+#include "file.h"
+
 struct spinlock tickslock;
 uint ticks;
 
@@ -15,6 +19,8 @@ extern char trampoline[], uservec[], userret[];
 void kernelvec();
 
 extern int devintr();
+
+int mmaphandler(pagetable_t, struct vma*);
 
 void
 trapinit(void)
@@ -65,7 +71,26 @@ usertrap(void)
     intr_on();
 
     syscall();
-  } else if((which_dev = devintr()) != 0){
+  } else if(r_scause() == 13){
+    // mmap 
+
+    // 先确认发生缺页错误的va是不是mmap区域的
+    int i;
+    uint64 va = r_stval();
+
+    for(i = 0 ; i < VMA_NUM ; i++) {
+      if(p->vmas[i].addr <= va && p->vmas[i].addr + p->vmas[i].length > va) {
+        break;
+      }  
+    }
+
+    if(p->vmas[i].valid == 0) {
+      panic("mmap_fault");
+    }
+    
+    mmaphandler(p->pagetable, &p->vmas[i]);
+  }
+  else if((which_dev = devintr()) != 0){
     // ok
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
@@ -218,3 +243,30 @@ devintr()
   }
 }
 
+
+int mmaphandler(pagetable_t pagetable,struct vma* vmap){
+
+  // 根据off读文件然后映射
+
+  uint64 bottom = vmap->addr, top = vmap->addr + vmap->length;
+  int offcur = vmap->off;
+  uint64 pa;
+  struct file *f = vmap->tfile;
+
+  for(uint64 cur = bottom ; cur < top ; cur += PGSIZE) {
+    if((pa = (uint64)kalloc()) == 0) {
+      return -1;
+    }
+
+    memset((void*)pa,0,PGSIZE);
+
+    ilock(f->ip);
+    int r = readi(vmap->tfile->ip,0,pa,offcur,PGSIZE);
+    iunlock(f->ip);
+    
+    mappages(pagetable,cur,PGSIZE,pa,vmap->prot);
+    offcur += r;  
+  }
+
+	return 0;
+}
