@@ -79,16 +79,20 @@ usertrap(void)
     uint64 va = r_stval();
 
     for(i = 0 ; i < VMA_NUM ; i++) {
-      if(p->vmas[i].addr <= va && p->vmas[i].addr + p->vmas[i].length > va) {
+      if(p->vmas[i].valid == 1 && p->vmas[i].addr <= va && p->vmas[i].addr + p->vmas[i].length > va) {
         break;
       }  
     }
-
-    if(p->vmas[i].valid == 0) {
-      panic("mmap_fault");
+    if(i == VMA_NUM)
+      p->killed = 1;
+    else {
+      if(p->vmas[i].valid == 0) {
+        panic("mmap_fault");
+      }
+      
+      mmaphandler(p->pagetable, &p->vmas[i]);
+      p->vmas[i].mapped = 1;
     }
-    
-    mmaphandler(p->pagetable, &p->vmas[i]);
   }
   else if((which_dev = devintr()) != 0){
     // ok

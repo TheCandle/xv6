@@ -92,6 +92,8 @@ struct vma {
   int prot;  
   int valid;
   int off;
+  // 代表有没有分配物理空间
+  int mapped;
 }; 
 
 // Per-process state

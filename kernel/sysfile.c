@@ -554,6 +554,9 @@ sys_mmap(void){
     argfd(4, &fd, &f) < 0 || argint(5, &off) < 0
   )
     return -1;
+
+  if((flags&MAP_SHARED)&& f->writable == 0 && (prot & PROT_WRITE)) 
+    return -1;
   
   struct proc *p = myproc();
   // 寻找P中空闲的vma
@@ -641,6 +644,52 @@ sys_mmap(void){
 
 uint64
 sys_munmap(void) {
-  return -1;
+  // return -1;
+
+  uint64 addr, length;
+
+  if(argaddr(0, &addr) < 0 || argaddr(1, &length) < 0 )
+    return -1;
+
+  uint64 bottom = addr;
+  uint64 top = addr + length;
+
+  struct proc *p = myproc();
+
+  int i;
+  for(i = 0 ; i < VMA_NUM ; i++) {
+    if(p->vmas[i].valid == 1 && bottom >= p->vmas[i].addr && top <= p->vmas[i].addr + p->vmas[i].length) {
+      break;
+    }
+  }
+
+  if(bottom == p->vmas[i].addr && top == p->vmas[i].addr + p->vmas[i].length) {
+    p->vmas[i].tfile->ref--;
+  } else {
+    if(bottom != p->vmas[i].addr) {
+      panic("munmap error");
+    }
+  }
+
+  // for(uint64 va = bottom ; va < top ; va+= PGSIZE) {
+  //   // shared并且这一页写过了
+  //   if((p->vmas[i].flags & MAP_SHARED)) {
+  //     filewrite(p->vmas[i].tfile, va, PGSIZE);
+  //   }
+  //   uvmunmap(p->pagetable, va, 1, 1);
+  // }
+
+  if(p->vmas[i].flags & MAP_SHARED) {
+    filewrite(p->vmas[i].tfile, bottom, length );
+  }
+  uvmunmap(p->pagetable, bottom, length/PGSIZE, 1);
+  if(p->vmas[i].length == length)
+  memset((void*)&p->vmas[i], 0, sizeof(struct vma));
+  else {
+    p->vmas[i].addr = addr + length ;
+    p->vmas[i].length -=  length;
+  } 
+
+  return 0;
 }
 

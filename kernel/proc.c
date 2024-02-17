@@ -315,6 +315,14 @@ fork(void)
   np->state = RUNNABLE;
   release(&np->lock);
 
+  // solve mmap
+  for(int i = 0 ; i < VMA_NUM ; i++) {
+    if(p->vmas[i].valid){
+      filedup(p->vmas[i].tfile);
+      np->vmas[i] = p->vmas[i];
+    }
+  }
+
   return pid;
 }
 
@@ -372,6 +380,11 @@ exit(int status)
   p->state = ZOMBIE;
 
   release(&wait_lock);
+
+  for(int i = 0 ; i < VMA_NUM ; i++) {
+    if(p->vmas[i].valid && p->vmas[i].mapped)
+    uvmunmap(p->pagetable, p->vmas[i].addr, p->vmas[i].length/PGSIZE,1);
+  }
 
   // Jump into the scheduler, never to return.
   sched();
