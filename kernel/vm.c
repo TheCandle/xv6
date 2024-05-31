@@ -378,9 +378,12 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 	struct proc *p = myproc();
 	p->killed = 1; // there's no free memory
         } else {
-	memmove((char*)ka, (char*)pa0, PGSIZE);               	                      uint flags = PTE_FLAGS(*pte);
-         uvmunmap(pagetable, va0, 1, 1);		                     	      *pte = PA2PTE(ka) | flags | PTE_W;       	                                    *pte &= ~PTE_COW;
-	 pa0=ka;          	                                                }
+	memmove((char*)ka, (char*)pa0, PGSIZE); 
+        uint flags = PTE_FLAGS(*pte);
+        uvmunmap(pagetable, va0, 1, 1);		 
+        *pte = PA2PTE(ka) | flags | PTE_W; 
+      	*pte &= ~PTE_COW;
+	pa0=ka;          	                                                }
     }	
     
     n = PGSIZE - (dstva - va0);
